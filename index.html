@@ -1,10 +1,11 @@
 
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Enhanced Map UI with Waze Alerts</title>
+<title>Filtered Waze Alerts Map</title>
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <style>
   html, body {
@@ -73,23 +74,60 @@
     font-size: 0.85em;
     font-weight: bold;
   }
+
+  .radar-icon {
+    background: rgba(255, 0, 0, 0.4);
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    animation: pulse 1.5s infinite;
+    border: 2px solid red;
+  }
+
+  @keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+    70% { transform: scale(1.8); opacity: 0; }
+    100% { transform: scale(1); opacity: 0; }
+  }
+
+  .traffic-light-icon {
+    width: 32px;
+    height: 32px;
+    background: url('https://upload.wikimedia.org/wikipedia/commons/2/2f/Traffic_light_animated.gif') no-repeat center center;
+    background-size: contain;
+  }
 </style>
-</head>
+<style>
+.pulse-marker {
+  background: rgba(255,0,0,0.4);
+  border: 2px solid red;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  position: absolute;
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+  0% { transform: scale(0.9); opacity: 1; }
+  70% { transform: scale(1.5); opacity: 0; }
+  100% { transform: scale(0.9); opacity: 0; }
+}
+</style></head>
 <body>
 <div id="map"></div>
 <div class="overlay top-bar">
-  <input id="coordInput" placeholder="Paste coordinates"/>
-  <button onclick="generateLinks()">Go 🚀</button>
-  <button onclick="openAllLinks()">🌐 Open All</button>
-  <button onclick="copyGoogleMapsLink()">🦅 Copy</button>
+<input id="coordInput" placeholder="Paste coordinates"/>
+<button onclick="generateLinks()">Go 🚀</button>
+<button onclick="openAllLinks()">🌐 Open All</button>
+<button onclick="copyGoogleMapsLink()">🦅 Copy</button>
 </div>
 <div class="overlay info-box">
-  <h3>📍 Location Info</h3>
-  <p><strong>Street:</strong> <span id="streetName">-</span></p>
-  <p><strong>LA:</strong> <span id="cityName">-</span></p>
-  <p><strong>Postcode:</strong> <span id="postcode">-</span></p>
-  <h4>🚌 Bus Routes</h4>
-  <div id="busRoutes">Loading...</div>
+<h3>📍 Location Info</h3>
+<p><strong>Street:</strong> <span id="streetName">-</span></p>
+<p><strong>LA:</strong> <span id="cityName">-</span></p>
+<p><strong>Postcode:</strong> <span id="postcode">-</span></p>
+<h4>🚌 Bus Routes</h4>
+<div id="busRoutes">Loading...</div>
 </div>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
@@ -99,12 +137,6 @@
   }).addTo(map);
 
   let marker;
-  const accidentIcon = L.icon({
-    iconUrl: 'https://cdn-icons-png.flaticon.com/512/1933/1933005.png',
-    iconSize: [32, 32],
-    iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
-  });
 
   function extractCoordinates(input) {
     const match = input.match(/(-?\d+(?:\.\d+)?)[^\d.-]*(-?\d+(?:\.\d+)?)/);
@@ -126,7 +158,7 @@
     });
     map.setView([lat, lon], 16);
 
-    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
+    fetch(`https://nom-proxy.onrender.com/reverse?lat=${lat}&lon=${lon}`)
       .then(res => res.json())
       .then(data => {
         const address = data.address || {};
@@ -168,9 +200,7 @@
     });
   }
 
-  function openAllLinks() {
-    // Placeholder for opening links
-  }
+  function openAllLinks() {}
 
   function copyGoogleMapsLink() {
     const input = document.getElementById("coordInput").value;
@@ -187,13 +217,34 @@
       .then(data => {
         if (!data.alerts) return;
         data.alerts.forEach(alert => {
-          if (alert.type === "ACCIDENT" && alert.location) {
-            const lat = alert.location.y;
-            const lon = alert.location.x;
-            const description = alert.description || "Accident reported";
-            L.marker([lat, lon], { icon: accidentIcon })
+          if (!alert.location) return;
+          const lat = alert.location.y;
+          const lon = alert.location.x;
+          const type = alert.type;
+          const description = alert.description || type;
+
+          if (type === "ACCIDENT") {
+            const divIcon = L.divIcon({
+              className: '',
+              html: '<div class="radar-icon"></div>',
+              iconSize: [32, 32],
+              iconAnchor: [16, 16]
+            });
+            L.marker([lat, lon], { icon: divIcon })
               .addTo(map)
-              .bindPopup("🚧 " + description);
+              .bindPopup(`🚧 ${description}`);
+          }
+
+          if (type === "TRAFFIC_LIGHT_FAULT") {
+            const divIcon = L.divIcon({
+              className: '',
+              html: '<div class="traffic-light-icon"></div>',
+              iconSize: [32, 32],
+              iconAnchor: [16, 16]
+            });
+            L.marker([lat, lon], { icon: divIcon })
+              .addTo(map)
+              .bindPopup(`🚦 ${description}`);
           }
         });
       })
@@ -213,6 +264,35 @@
     generateLinks();
   });
 </script>
-</body>
+<script>
+async function fetchWazeAlerts() {
+  const url = "https://www.waze.com/row-partnerhub-api/partners/11867436614/waze-feeds/4e8ef399-d6b9-4338-9840-7c2beacd235b?format=1";
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+    const alerts = data.alerts || [];
+
+    alerts.forEach(alert => {
+      if (alert.type === "ACCIDENT" && alert.location) {
+        const lat = alert.location.y;
+        const lon = alert.location.x;
+
+        const pulsingIcon = L.divIcon({
+          className: 'pulse-marker',
+          iconSize: [20, 20]
+        });
+
+        L.marker([lat, lon], { icon: pulsingIcon }).addTo(map);
+      }
+    });
+  } catch (error) {
+    console.error("Failed to fetch Waze alerts:", error);
+  }
+}
+
+// Call the function after map initialization
+setTimeout(fetchWazeAlerts, 2000);
+</script></body>
 </html>
+
 
