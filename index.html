@@ -133,7 +133,7 @@
 <script>
 function loadWazeAlerts() {
   const wazeUrl = encodeURIComponent("https://www.waze.com/row-partnerhub-api/partners/11867436614/waze-feeds/4e8ef399-d6b9-4338-9840-7c2beacd235b?format=1");
-  fetch(`https://nom-proxy.onrender.com/proxy?url=${wazeUrl}`)
+  fetch(`https://waze-proxy.onrender.com/proxy?url=${wazeUrl}`)
     .then(res => res.json())
     .then(data => {
       if (!data.alerts) return;
