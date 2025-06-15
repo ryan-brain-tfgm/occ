@@ -176,7 +176,7 @@ function loadWazeAlerts() {
 </script>
 <script>
 async function fetchWazeAlerts() {
-  const url = "https://www.waze.com/row-partnerhub-api/partners/11867436614/waze-feeds/4e8ef399-d6b9-4338-9840-7c2beacd235b?format=1";
+  const url = "https://waze-proxy.onrender.com/proxy?url=https://www.waze.com/row-partnerhub-api/partners/11867436614/waze-feeds/4e8ef399-d6b9-4338-9840-7c2beacd235b?format=1";
   try {
     const response = await fetch(url);
     const data = await response.json();
