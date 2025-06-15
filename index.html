@@ -131,138 +131,48 @@
 </div>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
-  let map = L.map('map').setView([53.48, -2.24], 13);
-  L.tileLayer('https://tile.thunderforest.com/transport-dark/{z}/{x}/{y}.png?apikey=ec4c98ec4e394899a63ccecdf9712e54', {
-    attribution: '© Thunderforest, © OpenStreetMap contributors'
-  }).addTo(map);
-
-  let marker;
-
-  function extractCoordinates(input) {
-    const match = input.match(/(-?\d+(?:\.\d+)?)[^\d.-]*(-?\d+(?:\.\d+)?)/);
-    return match ? [parseFloat(match[1]), parseFloat(match[2])] : null;
-  }
-
-  function generateLinks() {
-    const input = document.getElementById("coordInput").value;
-    const coords = extractCoordinates(input);
-    if (!coords) return alert("Invalid coordinates");
-
-    const [lat, lon] = coords;
-    if (marker) map.removeLayer(marker);
-    marker = L.marker([lat, lon], { draggable: true }).addTo(map);
-    marker.on('dragend', function (e) {
-      const position = marker.getLatLng();
-      document.getElementById("coordInput").value = position.lat.toFixed(6) + ", " + position.lng.toFixed(6);
-      generateLinks();
-    });
-    map.setView([lat, lon], 16);
-
-    fetch(`https://nom-proxy.onrender.com/reverse?lat=${lat}&lon=${lon}`)
-      .then(res => res.json())
-      .then(data => {
-        const address = data.address || {};
-        document.getElementById("streetName").textContent = address.road || "-";
-        document.getElementById("cityName").textContent = address.city || address.town || address.village || "-";
-        document.getElementById("postcode").textContent = address.postcode || "-";
-      });
-
-    fetchBusRoutes(lat, lon);
-  }
-
-  function fetchBusRoutes(lat, lon) {
-    const query = `[out:json];relation["route"="bus"](around:50,${lat},${lon});out tags;`;
-    fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      body: query
-    })
+function loadWazeAlerts() {
+  const wazeUrl = encodeURIComponent("https://www.waze.com/row-partnerhub-api/partners/11867436614/waze-feeds/4e8ef399-d6b9-4338-9840-7c2beacd235b?format=1");
+  fetch(`https://nom-proxy.onrender.com/proxy?url=${wazeUrl}`)
     .then(res => res.json())
     .then(data => {
-      const routes = new Set();
-      data.elements.forEach(el => {
-        if (el.tags?.ref) routes.add(el.tags.ref);
+      if (!data.alerts) return;
+      data.alerts.forEach(alert => {
+        if (!alert.location) return;
+        const lat = alert.location.y;
+        const lon = alert.location.x;
+        const type = alert.type;
+        const description = alert.description || type;
+
+        if (type === "ACCIDENT") {
+          const divIcon = L.divIcon({
+            className: '',
+            html: '<div class="radar-icon"></div>',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
+          });
+          L.marker([lat, lon], { icon: divIcon })
+            .addTo(map)
+            .bindPopup(`🚧 ${description}`);
+        }
+
+        if (type === "TRAFFIC_LIGHT_FAULT") {
+          const divIcon = L.divIcon({
+            className: '',
+            html: '<div class="traffic-light-icon"></div>',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16]
+          });
+          L.marker([lat, lon], { icon: divIcon })
+            .addTo(map)
+            .bindPopup(`🚦 ${description}`);
+        }
       });
-      const container = document.getElementById("busRoutes");
-      container.innerHTML = "";
-      if (routes.size === 0) {
-        container.textContent = "None found";
-      } else {
-        Array.from(routes).sort().forEach(route => {
-          const chip = document.createElement("span");
-          chip.className = "route-chip";
-          chip.textContent = route;
-          container.appendChild(chip);
-        });
-      }
     })
-    .catch(() => {
-      document.getElementById("busRoutes").textContent = "Error fetching";
+    .catch(err => {
+      console.error("Failed to load Waze alerts:", err);
     });
-  }
-
-  function openAllLinks() {}
-
-  function copyGoogleMapsLink() {
-    const input = document.getElementById("coordInput").value;
-    const coords = extractCoordinates(input);
-    if (!coords) return alert("Invalid input");
-    const [lat, lon] = coords;
-    const url = `https://www.google.com/maps/@${lat},${lon},316m/`;
-    navigator.clipboard.writeText(url).then(() => alert("Copied!"));
-  }
-
-  function loadWazeAlerts() {
-    fetch("https://corsproxy.io/?url=https://www.waze.com/row-partnerhub-api/partners/11867436614/waze-feeds/4e8ef399-d6b9-4338-9840-7c2beacd235b?format=1")
-      .then(res => res.json())
-      .then(data => {
-        if (!data.alerts) return;
-        data.alerts.forEach(alert => {
-          if (!alert.location) return;
-          const lat = alert.location.y;
-          const lon = alert.location.x;
-          const type = alert.type;
-          const description = alert.description || type;
-
-          if (type === "ACCIDENT") {
-            const divIcon = L.divIcon({
-              className: '',
-              html: '<div class="radar-icon"></div>',
-              iconSize: [32, 32],
-              iconAnchor: [16, 16]
-            });
-            L.marker([lat, lon], { icon: divIcon })
-              .addTo(map)
-              .bindPopup(`🚧 ${description}`);
-          }
-
-          if (type === "TRAFFIC_LIGHT_FAULT") {
-            const divIcon = L.divIcon({
-              className: '',
-              html: '<div class="traffic-light-icon"></div>',
-              iconSize: [32, 32],
-              iconAnchor: [16, 16]
-            });
-            L.marker([lat, lon], { icon: divIcon })
-              .addTo(map)
-              .bindPopup(`🚦 ${description}`);
-          }
-        });
-      })
-      .catch(err => {
-        console.error("Failed to load Waze alerts:", err);
-      });
-  }
-
-  loadWazeAlerts();
-  setInterval(loadWazeAlerts, 5 * 60 * 1000);
-
-  map.on('click', function(e) {
-    const lat = e.latlng.lat.toFixed(6);
-    const lon = e.latlng.lng.toFixed(6);
-    const input = document.getElementById("coordInput");
-    input.value = lat + ", " + lon;
-    generateLinks();
-  });
+}
 </script>
 <script>
 async function fetchWazeAlerts() {
@@ -294,5 +204,3 @@ async function fetchWazeAlerts() {
 setTimeout(fetchWazeAlerts, 2000);
 </script></body>
 </html>
-
-
